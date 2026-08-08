@@ -1,0 +1,13 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "ai-triage": {
+      "appLocation": ".",
+      "outputLocation": ".",
+      "apiDevserverUrl": "http://localhost:7071",
+      "apiLanguage": "dotnetisolated",
+      "apiVersion": "8.0",
+      "apiDevserverTimeout": 60000
+    }
+  }
+}

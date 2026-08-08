@@ -1,0 +1,17 @@
+# Local settings (contains secrets)
+api/local.settings.json
+tools/.azure-config
+
+# .NET
+api/bin/
+api/obj/
+api/published/
+
+# Azurite local storage
+.azurite/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store

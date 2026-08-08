@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Triage — TopDesk</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <h1 class="text-lg font-semibold tracking-wide">AI Triage <span class="text-gray-500 text-sm ml-2">TopDesk</span></h1>
+    <div class="flex gap-3">
+      <button onclick="loadIncidents()" class="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 rounded">Refresh Incidents</button>
+      <button onclick="triageAll()" class="px-3 py-1 text-sm bg-blue-700 hover:bg-blue-600 rounded">Triage All</button>
+    </div>
+  </header>
+
+  <main class="p-6 max-w-6xl mx-auto">
+
+    <!-- Status bar -->
+    <div id="status" class="mb-4 text-sm text-gray-400"></div>
+
+    <!-- Two column layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Incidents panel -->
+      <section>
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Open Incidents</h2>
+        <div id="incidents" class="space-y-2">
+          <p class="text-gray-600 text-sm">Click "Refresh Incidents" to load.</p>
+        </div>
+      </section>
+
+      <!-- Triage results panel -->
+      <section>
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Triage Results</h2>
+        <div id="results" class="space-y-2">
+          <p class="text-gray-600 text-sm">Triage results will appear here.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    const API = '/api';
+
+    function setStatus(msg, error = false) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = `mb-4 text-sm ${error ? 'text-red-400' : 'text-gray-400'}`;
+    }
+
+    const PRIORITY_COLORS = {
+      P1: 'bg-red-900 text-red-200',
+      P2: 'bg-orange-900 text-orange-200',
+      P3: 'bg-yellow-900 text-yellow-200',
+      P4: 'bg-gray-800 text-gray-300',
+    };
+
+    async function loadIncidents() {
+      setStatus('Loading incidents from TopDesk...');
+      try {
+        const res = await fetch(`${API}/incidents`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const incidents = await res.json();
+        renderIncidents(incidents);
+        setStatus(`${incidents.length} open incidents loaded.`);
+      } catch (e) {
+        setStatus(`Error loading incidents: ${e.message}`, true);
+      }
+    }
+
+    function renderIncidents(incidents) {
+      const el = document.getElementById('incidents');
+      if (!incidents.length) {
+        el.innerHTML = '<p class="text-gray-600 text-sm">No open incidents.</p>';
+        return;
+      }
+      el.innerHTML = incidents.map(i => `
+        <div class="bg-gray-900 border border-gray-800 rounded p-3 cursor-pointer hover:border-gray-600 transition"
+             onclick="triageOne('${i.id}')">
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-xs text-gray-500">${i.number}</span>
+            ${i.priority?.name ? `<span class="text-xs px-1.5 py-0.5 rounded ${PRIORITY_COLORS[i.priority.name] ?? 'bg-gray-800'}">${i.priority.name}</span>` : ''}
+          </div>
+          <p class="text-sm mt-1">${escapeHtml(i.briefDescription)}</p>
+          ${i.caller?.dynamicName ? `<p class="text-xs text-gray-500 mt-1">${escapeHtml(i.caller.dynamicName)}</p>` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function triageOne(id) {
+      setStatus(`Triaging incident ${id}...`);
+      try {
+        const res = await fetch(`${API}/incidents/triage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ incidentId: id })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const results = await res.json();
+        renderResults(results);
+        setStatus(`Triage complete.`);
+      } catch (e) {
+        setStatus(`Triage error: ${e.message}`, true);
+      }
+    }
+
+    async function triageAll() {
+      setStatus('Triaging all open incidents (may take a moment)...');
+      try {
+        const res = await fetch(`${API}/incidents/triage`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const results = await res.json();
+        renderResults(results);
+        setStatus(`Triaged ${results.length} incidents.`);
+      } catch (e) {
+        setStatus(`Triage error: ${e.message}`, true);
+      }
+    }
+
+    function renderResults(results) {
+      const el = document.getElementById('results');
+      if (!results.length) {
+        el.innerHTML = '<p class="text-gray-600 text-sm">No results.</p>';
+        return;
+      }
+      el.innerHTML = results.map(r => `
+        <div class="bg-gray-900 border border-gray-800 rounded p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-gray-500">${r.incidentNumber}</span>
+            <div class="flex gap-1">
+              <span class="text-xs px-1.5 py-0.5 rounded ${PRIORITY_COLORS[r.recommendedPriority] ?? 'bg-gray-800'}">${r.recommendedPriority}</span>
+              <span class="text-xs text-gray-500">${Math.round(r.confidence * 100)}%</span>
+            </div>
+          </div>
+          <p class="text-sm font-medium">${escapeHtml(r.briefDescription)}</p>
+          <p class="text-xs text-gray-400 mt-1">Category: ${escapeHtml(r.recommendedCategory)}</p>
+          <p class="text-xs text-blue-400 mt-1">${escapeHtml(r.suggestedAction)}</p>
+          <p class="text-xs text-gray-500 mt-1 italic">${escapeHtml(r.reasoning)}</p>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      return (str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Load on page open
+    loadIncidents();
+  </script>
+</body>
+</html>
