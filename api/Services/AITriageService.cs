@@ -1,8 +1,8 @@
 using System.ClientModel;
 using AITriage.Models;
-using Azure.AI.OpenAI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using OpenAI;
 using OpenAI.Chat;
 
 namespace AITriage.Services;
@@ -15,12 +15,10 @@ public class AITriageService : IAITriageService
     public AITriageService(IConfiguration config, ILogger<AITriageService> logger)
     {
         _logger = logger;
-        var endpoint = config["AZURE_OPENAI_ENDPOINT"] ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT not configured");
-        var key = config["AZURE_OPENAI_API_KEY"] ?? throw new InvalidOperationException("AZURE_OPENAI_API_KEY not configured");
-        var deployment = config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4";
+        var key = config["OPENAI_API_KEY"] ?? throw new InvalidOperationException("OPENAI_API_KEY not configured");
+        var model = config["OPENAI_MODEL"] ?? "gpt-4o";
 
-        var client = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(key));
-        _chat = client.GetChatClient(deployment);
+        _chat = new OpenAIClient(new ApiKeyCredential(key)).GetChatClient(model);
     }
 
     public async Task<TriageResult> TriageIncidentAsync(TopDeskIncident incident)
