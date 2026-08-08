@@ -10,8 +10,8 @@ public class TopDeskIncident
     public TopDeskCategory? Category { get; set; }
     public TopDeskCategory? Subcategory { get; set; }
     public TopDeskNamedItem? Priority { get; set; }
-    public TopDeskNamedItem? Status { get; set; }
-    public DateTime CreationDate { get; set; }
+    public string? Status { get; set; }
+    public string? CreationDate { get; set; }
     public bool Completed { get; set; }
 }
 

@@ -9,8 +9,9 @@ namespace AITriage.Services;
 
 public class TopDeskService : ITopDeskService
 {
-    private readonly HttpClient _http;
+    private readonly IHttpClientFactory _httpFactory;
     private readonly string _baseUrl;
+    private readonly string _credentials;
     private readonly ILogger<TopDeskService> _logger;
 
     private static readonly JsonSerializerOptions _json = new()
@@ -18,16 +19,22 @@ public class TopDeskService : ITopDeskService
         PropertyNameCaseInsensitive = true
     };
 
-    public TopDeskService(HttpClient http, IConfiguration config, ILogger<TopDeskService> logger)
+    public TopDeskService(IHttpClientFactory httpFactory, IConfiguration config, ILogger<TopDeskService> logger)
     {
-        _http = http;
+        _httpFactory = httpFactory;
         _logger = logger;
         _baseUrl = config["TOPDESK_URL"]?.TrimEnd('/') ?? throw new InvalidOperationException("TOPDESK_URL not configured");
 
         var username = config["TOPDESK_USERNAME"] ?? throw new InvalidOperationException("TOPDESK_USERNAME not configured");
         var password = config["TOPDESK_PASSWORD"] ?? throw new InvalidOperationException("TOPDESK_PASSWORD not configured");
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        _credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = _httpFactory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", _credentials);
+        return client;
     }
 
     public async Task<List<TopDeskIncident>> GetOpenIncidentsAsync(int pageSize = 20)
@@ -35,7 +42,7 @@ public class TopDeskService : ITopDeskService
         var url = $"{_baseUrl}/tas/api/incidents?pageSize={pageSize}&pageStart=0&status=firstLine";
         _logger.LogInformation("Fetching incidents from TopDesk: {Url}", url);
 
-        var response = await _http.GetAsync(url);
+        var response = await CreateClient().GetAsync(url);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
@@ -44,7 +51,7 @@ public class TopDeskService : ITopDeskService
 
     public async Task<TopDeskIncident?> GetIncidentAsync(string id)
     {
-        var response = await _http.GetAsync($"{_baseUrl}/tas/api/incidents/id/{id}");
+        var response = await CreateClient().GetAsync($"{_baseUrl}/tas/api/incidents/id/{id}");
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
