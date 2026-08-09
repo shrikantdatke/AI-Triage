@@ -23,5 +23,6 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ITopDeskService, TopDeskService>();
 builder.Services.AddSingleton<IAITriageService, AITriageService>();
 builder.Services.AddSingleton<ITriageStateService, TriageStateService>();
+builder.Services.AddSingleton<IBranchAssignmentService, BranchAssignmentService>();
 
 builder.Build().Run();

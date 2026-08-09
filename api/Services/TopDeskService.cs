@@ -69,4 +69,24 @@ public class TopDeskService : ITopDeskService
             _logger.LogWarning("Failed to post note to {Id}: {Status} {Error}", incidentId, response.StatusCode, error);
         }
     }
+
+    public async Task UpdateIncidentAssignmentsAsync(string incidentId, string? categoryId = null, string? subcategoryId = null, string? priorityId = null, string? operatorGroupId = null)
+    {
+        var update = new Dictionary<string, object>();
+        if (categoryId != null) update["category"] = new { id = categoryId };
+        if (subcategoryId != null) update["subcategory"] = new { id = subcategoryId };
+        if (priorityId != null) update["priority"] = new { id = priorityId };
+        if (operatorGroupId != null) update["operatorGroup"] = new { id = operatorGroupId };
+
+        if (update.Count == 0) return;
+
+        var body = JsonSerializer.Serialize(update);
+        var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var response = await CreateClient().PatchAsync($"{_baseUrl}/tas/api/incidents/id/{incidentId}", content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Failed to update assignments for {Id}: {Status} {Error}", incidentId, response.StatusCode, error);
+        }
+    }
 }

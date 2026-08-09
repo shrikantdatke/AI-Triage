@@ -10,6 +10,7 @@ public class TriageTimerFunction(
     ITopDeskService topDesk,
     IAITriageService aiTriage,
     ITriageStateService state,
+    IBranchAssignmentService branchAssignments,
     IConfiguration config,
     ILogger<TriageTimerFunction> logger)
 {
@@ -32,6 +33,23 @@ public class TriageTimerFunction(
 
             try
             {
+                // Apply branch-based assignments if not set
+                if (incident.Category == null && incident.CallerBranch?.Id != null)
+                {
+                    var assignment = await branchAssignments.GetAssignmentAsync(incident.CallerBranch.Id);
+                    if (assignment != null)
+                    {
+                        await topDesk.UpdateIncidentAssignmentsAsync(
+                            incident.Id,
+                            assignment.CategoryId,
+                            assignment.SubcategoryId,
+                            assignment.PriorityId,
+                            assignment.OperatorGroupId);
+                        logger.LogInformation("Assigned {Number} via branch {Branch}", incident.Number, incident.CallerBranch.Name);
+                    }
+                }
+
+                // AI triage and note
                 var result = await aiTriage.TriageIncidentAsync(incident);
                 await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
                 await state.MarkProcessedAsync(incident.Id);
@@ -40,7 +58,7 @@ public class TriageTimerFunction(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to triage incident {Id}", incident.Id);
+                logger.LogError(ex, "Failed to process incident {Id}", incident.Id);
             }
         }
     }

@@ -7,6 +7,7 @@ public class TopDeskIncident
     public string BriefDescription { get; set; } = "";
     public string? Request { get; set; }
     public TopDeskCaller? Caller { get; set; }
+    public TopDeskCategory? CallerBranch { get; set; }
     public TopDeskCategory? Category { get; set; }
     public TopDeskCategory? Subcategory { get; set; }
     public TopDeskNamedItem? Priority { get; set; }
