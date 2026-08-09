@@ -22,5 +22,6 @@ builder.Services.Configure<WorkerOptions>(options =>
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ITopDeskService, TopDeskService>();
 builder.Services.AddSingleton<IAITriageService, AITriageService>();
+builder.Services.AddSingleton<ITriageStateService, TriageStateService>();
 
 builder.Build().Run();

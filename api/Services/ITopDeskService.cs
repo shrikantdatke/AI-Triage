@@ -6,4 +6,5 @@ public interface ITopDeskService
 {
     Task<List<TopDeskIncident>> GetOpenIncidentsAsync(int pageSize = 20);
     Task<TopDeskIncident?> GetIncidentAsync(string id);
+    Task PostInternalNoteAsync(string incidentId, string note);
 }

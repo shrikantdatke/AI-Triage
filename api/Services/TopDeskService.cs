@@ -57,4 +57,16 @@ public class TopDeskService : ITopDeskService
         var json = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<TopDeskIncident>(json, _json);
     }
+
+    public async Task PostInternalNoteAsync(string incidentId, string note)
+    {
+        var body = JsonSerializer.Serialize(new { action = note, actionInvisibleForCaller = true });
+        var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var response = await CreateClient().PatchAsync($"{_baseUrl}/tas/api/incidents/id/{incidentId}", content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Failed to post note to {Id}: {Status} {Error}", incidentId, response.StatusCode, error);
+        }
+    }
 }

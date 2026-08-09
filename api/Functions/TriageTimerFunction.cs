@@ -1,29 +1,42 @@
-using System.Text.Json;
+using AITriage.Models;
 using AITriage.Services;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace AITriage.Functions;
 
-public class TriageTimerFunction(ITopDeskService topDesk, IAITriageService aiTriage, ILogger<TriageTimerFunction> logger)
+public class TriageTimerFunction(
+    ITopDeskService topDesk,
+    IAITriageService aiTriage,
+    ITriageStateService state,
+    IConfiguration config,
+    ILogger<TriageTimerFunction> logger)
 {
-    // Runs every 5 minutes
     [Function("TriageTimer")]
     public async Task Run([TimerTrigger("0 */5 * * * *")] TimerInfo timer)
     {
-        logger.LogInformation("Triage timer fired at {Time}", DateTime.UtcNow);
+        if (!bool.TryParse(config["AI_TRIAGE_ENABLED"], out var enabled) || !enabled)
+        {
+            logger.LogInformation("AI Triage disabled. Set AI_TRIAGE_ENABLED=true to enable.");
+            return;
+        }
 
-        var incidents = await topDesk.GetOpenIncidentsAsync(10);
-        logger.LogInformation("Processing {Count} open incidents", incidents.Count);
+        logger.LogInformation("AI Triage timer fired at {Time}", DateTime.UtcNow);
+        var incidents = await topDesk.GetOpenIncidentsAsync(20);
 
         foreach (var incident in incidents)
         {
+            if (await state.IsProcessedAsync(incident.Id))
+                continue;
+
             try
             {
                 var result = await aiTriage.TriageIncidentAsync(incident);
-                logger.LogInformation(
-                    "Triage {Number}: priority={Priority}, category={Category}, confidence={Confidence:P0}",
-                    result.IncidentNumber, result.RecommendedPriority, result.RecommendedCategory, result.Confidence);
+                await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
+                await state.MarkProcessedAsync(incident.Id);
+                logger.LogInformation("Noted {Number}: {Priority} ({Confidence:P0})",
+                    result.IncidentNumber, result.RecommendedPriority, result.Confidence);
             }
             catch (Exception ex)
             {
@@ -31,4 +44,20 @@ public class TriageTimerFunction(ITopDeskService topDesk, IAITriageService aiTri
             }
         }
     }
+
+    private static string FormatNote(TriageResult r) => $"""
+        AI Triage Recommendation
+        ========================
+        Priority:   {r.RecommendedPriority}
+        Category:   {r.RecommendedCategory}
+        Confidence: {r.Confidence:P0}
+
+        Suggested Action:
+        {r.SuggestedAction}
+
+        Reasoning:
+        {r.Reasoning}
+
+        -- Generated automatically by AI Triage
+        """;
 }
