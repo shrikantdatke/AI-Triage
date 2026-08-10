@@ -11,6 +11,7 @@ namespace AITriage.Functions;
 public class TriageIncidentFunction(
     ITopDeskService topDesk,
     IAITriageService aiTriage,
+    IBranchAssignmentService branchAssignments,
     IConfiguration config,
     ILogger<TriageIncidentFunction> logger)
 {
@@ -38,6 +39,21 @@ public class TriageIncidentFunction(
                 await notFound.WriteStringAsync($"Incident {id} not found");
                 return notFound;
             }
+            // Apply branch-based assignments if not set
+            if (incident.Category == null && incident.CallerBranch?.Id != null)
+            {
+                var assignment = await branchAssignments.GetAssignmentAsync(incident.CallerBranch.Id);
+                if (assignment != null)
+                {
+                    await topDesk.UpdateIncidentAssignmentsAsync(
+                        incident.Id,
+                        assignment.CategoryId,
+                        assignment.SubcategoryId,
+                        assignment.PriorityId,
+                        assignment.OperatorGroupId);
+                    logger.LogInformation("Assigned {Number} via branch", incident.Number);
+                }
+            }
             var result = await aiTriage.TriageIncidentAsync(incident);
             if (postNotes)
                 await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
@@ -46,6 +62,21 @@ public class TriageIncidentFunction(
         else
         {
             var incidents = await topDesk.GetOpenIncidentsAsync(10);
+            // Apply branch assignments to any without category
+            foreach (var inc in incidents.Where(i => i.Category == null && i.CallerBranch?.Id != null))
+            {
+                var assignment = await branchAssignments.GetAssignmentAsync(inc.CallerBranch.Id);
+                if (assignment != null)
+                {
+                    await topDesk.UpdateIncidentAssignmentsAsync(
+                        inc.Id,
+                        assignment.CategoryId,
+                        assignment.SubcategoryId,
+                        assignment.PriorityId,
+                        assignment.OperatorGroupId);
+                    logger.LogInformation("Assigned {Number} via branch", inc.Number);
+                }
+            }
             var triaged = await Task.WhenAll(incidents.Select(i => aiTriage.TriageIncidentAsync(i)));
             if (postNotes)
                 await Task.WhenAll(triaged.Select(r => topDesk.PostInternalNoteAsync(r.IncidentId, FormatNote(r))));
