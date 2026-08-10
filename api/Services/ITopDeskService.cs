@@ -8,4 +8,5 @@ public interface ITopDeskService
     Task<TopDeskIncident?> GetIncidentAsync(string id);
     Task PostInternalNoteAsync(string incidentId, string note);
     Task UpdateIncidentAssignmentsAsync(string incidentId, string? categoryId = null, string? subcategoryId = null, string? priorityId = null, string? operatorGroupId = null);
+    Task<List<TopDeskIncident>> GetPastIncidentsForBranchAsync(string branchId, int limit = 5);
 }

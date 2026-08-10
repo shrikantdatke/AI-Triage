@@ -89,4 +89,25 @@ public class TopDeskService : ITopDeskService
             _logger.LogWarning("Failed to update assignments for {Id}: {Status} {Error}", incidentId, response.StatusCode, error);
         }
     }
+
+    public async Task<List<TopDeskIncident>> GetPastIncidentsForBranchAsync(string branchId, int limit = 5)
+    {
+        var url = $"{_baseUrl}/tas/api/incidents?pageSize={limit}&pageStart=0&completed=true&sortField=modificationDate&sortOrder=desc";
+        try
+        {
+            var response = await CreateClient().GetAsync(url);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync();
+            var incidents = JsonSerializer.Deserialize<List<TopDeskIncident>>(json, _json) ?? [];
+
+            // Filter for same branch
+            return incidents.Where(i => i.CallerBranch?.Id == branchId).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch past incidents for branch {Branch}", branchId);
+            return [];
+        }
+    }
 }

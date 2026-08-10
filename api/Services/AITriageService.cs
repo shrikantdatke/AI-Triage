@@ -10,11 +10,13 @@ namespace AITriage.Services;
 public class AITriageService : IAITriageService
 {
     private readonly ChatClient _chat;
+    private readonly ITopDeskService _topDesk;
     private readonly ILogger<AITriageService> _logger;
 
-    public AITriageService(IConfiguration config, ILogger<AITriageService> logger)
+    public AITriageService(IConfiguration config, ITopDeskService topDesk, ILogger<AITriageService> logger)
     {
         _logger = logger;
+        _topDesk = topDesk;
         var endpoint = config["AZURE_OPENAI_ENDPOINT"] ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT not configured");
         var key = config["AZURE_OPENAI_API_KEY"] ?? throw new InvalidOperationException("AZURE_OPENAI_API_KEY not configured");
         var deployment = config["AZURE_OPENAI_DEPLOYMENT"] ?? "gpt-4o-mini";
@@ -24,10 +26,19 @@ public class AITriageService : IAITriageService
 
     public async Task<TriageResult> TriageIncidentAsync(TopDeskIncident incident)
     {
+        // Fetch customer history in parallel
+        var pastIncidents = incident.CallerBranch?.Id != null
+            ? await _topDesk.GetPastIncidentsForBranchAsync(incident.CallerBranch.Id, 3)
+            : new List<TopDeskIncident>();
+
+        var historyContext = FormatPastIncidents(pastIncidents);
+
         var prompt = $$"""
             Analyze this IT support ticket and provide triage recommendations.
 
-            Ticket: {{incident.BriefDescription}}
+            {{historyContext}}
+
+            Current Ticket: {{incident.BriefDescription}}
             Details: {{incident.Request ?? "No details provided"}}
             Current Category: {{incident.Category?.Name ?? "Unknown"}}
             Current Priority: {{incident.Priority?.Name ?? "Unknown"}}
@@ -36,6 +47,7 @@ public class AITriageService : IAITriageService
             {
               "recommendedPriority": "P1|P2|P3|P4",
               "recommendedCategory": "category name",
+              "recommendedSubcategory": "subcategory name (e.g. Outlook, Teams, Exchange)",
               "suggestedAction": "brief action description",
               "reasoning": "brief explanation",
               "confidence": 0.0 to 1.0
@@ -54,7 +66,6 @@ public class AITriageService : IAITriageService
 
         try
         {
-            // Strip markdown code fences if present
             var json = content.Trim();
             if (json.StartsWith("```")) json = string.Join('\n', json.Split('\n')[1..^1]);
 
@@ -88,5 +99,18 @@ public class AITriageService : IAITriageService
                 Confidence = 0
             };
         }
+    }
+
+    private static string FormatPastIncidents(List<TopDeskIncident> past)
+    {
+        if (past.Count == 0) return "";
+
+        var lines = new List<string> { "Recent similar cases for this customer:" };
+        foreach (var inc in past)
+        {
+            var line = $"- {inc.Number}: {inc.BriefDescription} (Category: {inc.Category?.Name})";
+            lines.Add(line);
+        }
+        return string.Join("\n", lines) + "\n";
     }
 }
