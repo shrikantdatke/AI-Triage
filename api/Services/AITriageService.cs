@@ -105,12 +105,47 @@ public class AITriageService : IAITriageService
     {
         if (past.Count == 0) return "";
 
-        var lines = new List<string> { "Recent similar cases for this customer:" };
+        var lines = new List<string>
+        {
+            "Customer's recent similar tickets & resolutions:",
+            ""
+        };
+
         foreach (var inc in past)
         {
-            var line = $"- {inc.Number}: {inc.BriefDescription} (Category: {inc.Category?.Name})";
-            lines.Add(line);
+            lines.Add($"Ticket {inc.Number}:");
+            lines.Add($"  Issue: {inc.BriefDescription}");
+            lines.Add($"  Category: {inc.Category?.Name}");
+
+            // Extract resolution/discussion from Request field (contains history)
+            if (!string.IsNullOrEmpty(inc.Request))
+            {
+                var request = inc.Request;
+                // Extract last meaningful line from request (usually contains resolution)
+                var resolutionHint = ExtractResolutionHint(request);
+                if (!string.IsNullOrEmpty(resolutionHint))
+                {
+                    lines.Add($"  Resolution applied: {resolutionHint}");
+                }
+            }
+            lines.Add("");
         }
-        return string.Join("\n", lines) + "\n";
+
+        return string.Join("\n", lines);
+    }
+
+    private static string ExtractResolutionHint(string request)
+    {
+        // Extract last comment/action from request history
+        var lines = request.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length == 0) return "";
+
+        // Skip header lines, look for actionable content
+        var actionLines = lines
+            .Where(l => !l.Contains("GMT") && l.Length > 10)
+            .TakeLast(3)
+            .ToList();
+
+        return actionLines.Count > 0 ? actionLines[0][..Math.Min(120, actionLines[0].Length)] : "";
     }
 }
