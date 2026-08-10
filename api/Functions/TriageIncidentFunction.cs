@@ -12,6 +12,7 @@ public class TriageIncidentFunction(
     ITopDeskService topDesk,
     IAITriageService aiTriage,
     IBranchAssignmentService branchAssignments,
+    ICategoryMapperService categoryMapper,
     IConfiguration config,
     ILogger<TriageIncidentFunction> logger)
 {
@@ -55,6 +56,18 @@ public class TriageIncidentFunction(
                 }
             }
             var result = await aiTriage.TriageIncidentAsync(incident);
+
+            // Auto-assign category/subcategory based on description keywords
+            var categoryMapping = categoryMapper.MapDescription(incident.BriefDescription);
+            if (categoryMapping != null && incident.Category == null)
+            {
+                await topDesk.UpdateIncidentAssignmentsAsync(
+                    incident.Id,
+                    categoryMapping.CategoryId,
+                    categoryMapping.SubcategoryId);
+                logger.LogInformation("Auto-assigned category for {Number}", incident.Number);
+            }
+
             if (postNotes)
                 await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
             results = [result];
@@ -78,6 +91,21 @@ public class TriageIncidentFunction(
                 }
             }
             var triaged = await Task.WhenAll(incidents.Select(i => aiTriage.TriageIncidentAsync(i)));
+
+            // Auto-assign category based on description keywords
+            foreach (var (incident, result) in incidents.Zip(triaged))
+            {
+                var categoryMapping = categoryMapper.MapDescription(incident.BriefDescription);
+                if (categoryMapping != null && incident.Category == null)
+                {
+                    await topDesk.UpdateIncidentAssignmentsAsync(
+                        incident.Id,
+                        categoryMapping.CategoryId,
+                        categoryMapping.SubcategoryId);
+                    logger.LogInformation("Auto-assigned category for {Number}", incident.Number);
+                }
+            }
+
             if (postNotes)
                 await Task.WhenAll(triaged.Select(r => topDesk.PostInternalNoteAsync(r.IncidentId, FormatNote(r))));
             results = [.. triaged];
