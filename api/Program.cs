@@ -25,5 +25,6 @@ builder.Services.AddSingleton<IAITriageService, AITriageService>();
 builder.Services.AddSingleton<ITriageStateService, TriageStateService>();
 builder.Services.AddSingleton<IBranchAssignmentService, BranchAssignmentService>();
 builder.Services.AddSingleton<ICategoryMapperService, CategoryMapperService>();
+builder.Services.AddSingleton<IPriorityMapperService, PriorityMapperService>();
 
 builder.Build().Run();

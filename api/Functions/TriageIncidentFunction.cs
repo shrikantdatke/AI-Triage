@@ -13,6 +13,7 @@ public class TriageIncidentFunction(
     IAITriageService aiTriage,
     IBranchAssignmentService branchAssignments,
     ICategoryMapperService categoryMapper,
+    IPriorityMapperService priorityMapper,
     IConfiguration config,
     ILogger<TriageIncidentFunction> logger)
 {
@@ -68,6 +69,19 @@ public class TriageIncidentFunction(
                 logger.LogInformation("Auto-assigned category for {Number}", incident.Number);
             }
 
+            // Assign priority based on AI recommendation
+            var priorityMapping = priorityMapper.MapAIPriority(result.RecommendedPriority);
+            if (priorityMapping != null)
+            {
+                await topDesk.UpdateIncidentAssignmentsAsync(
+                    incident.Id,
+                    null,
+                    null,
+                    priorityMapping.TopDeskPriorityId,
+                    "bdfc2c34-85e2-412a-9cf1-4869efebd7c4");  // Default operator group: 24/7 Team - Monitoring
+                logger.LogInformation("Assigned priority {Priority} + default operator for {Number}", result.RecommendedPriority, incident.Number);
+            }
+
             if (postNotes)
                 await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
             results = [result];
@@ -103,6 +117,19 @@ public class TriageIncidentFunction(
                         categoryMapping.CategoryId,
                         categoryMapping.SubcategoryId);
                     logger.LogInformation("Auto-assigned category for {Number}", incident.Number);
+                }
+
+                // Assign priority based on AI recommendation + default operator
+                var priorityMapping = priorityMapper.MapAIPriority(result.RecommendedPriority);
+                if (priorityMapping != null)
+                {
+                    await topDesk.UpdateIncidentAssignmentsAsync(
+                        incident.Id,
+                        null,
+                        null,
+                        priorityMapping.TopDeskPriorityId,
+                        "bdfc2c34-85e2-412a-9cf1-4869efebd7c4");  // 24/7 Team - Monitoring
+                    logger.LogInformation("Assigned priority {Priority} for {Number}", result.RecommendedPriority, incident.Number);
                 }
             }
 
