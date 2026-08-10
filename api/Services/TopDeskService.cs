@@ -60,6 +60,7 @@ public class TopDeskService : ITopDeskService
 
     public async Task PostInternalNoteAsync(string incidentId, string note)
     {
+        _logger.LogInformation("Posting internal note to {Id}", incidentId);
         var body = JsonSerializer.Serialize(new { action = note, actionInvisibleForCaller = true });
         var content = new StringContent(body, Encoding.UTF8, "application/json");
         var response = await CreateClient().PatchAsync($"{_baseUrl}/tas/api/incidents/id/{incidentId}", content);
@@ -67,6 +68,10 @@ public class TopDeskService : ITopDeskService
         {
             var error = await response.Content.ReadAsStringAsync();
             _logger.LogWarning("Failed to post note to {Id}: {Status} {Error}", incidentId, response.StatusCode, error);
+        }
+        else
+        {
+            _logger.LogInformation("Posted note to {Id}", incidentId);
         }
     }
 
