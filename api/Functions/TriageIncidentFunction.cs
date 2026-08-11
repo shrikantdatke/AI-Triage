@@ -11,6 +11,7 @@ namespace AITriage.Functions;
 public class TriageIncidentFunction(
     ITopDeskService topDesk,
     IAITriageService aiTriage,
+    ITriageStateService triagedState,
     IBranchAssignmentService branchAssignments,
     ICategoryMapperService categoryMapper,
     IPriorityMapperService priorityMapper,
@@ -41,6 +42,19 @@ public class TriageIncidentFunction(
                 await notFound.WriteStringAsync($"Incident {id} not found");
                 return notFound;
             }
+
+            // Check if already triaged
+            var alreadyProcessed = await triagedState.IsProcessedAsync(incident.Id);
+            if (alreadyProcessed)
+            {
+                var skipResponse = req.CreateResponse(System.Net.HttpStatusCode.OK);
+                skipResponse.Headers.Add("Content-Type", "application/json");
+                await skipResponse.WriteStringAsync(JsonSerializer.Serialize(
+                    new { message = $"Incident {incident.Number} already triaged", skipped = true },
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return skipResponse;
+            }
+
             // Apply branch-based assignments if not set
             if (incident.Category == null && incident.CallerBranch?.Id != null)
             {
@@ -84,13 +98,36 @@ public class TriageIncidentFunction(
 
             if (postNotes)
                 await topDesk.PostInternalNoteAsync(incident.Id, FormatNote(result));
+
+            // Mark as processed
+            await triagedState.MarkProcessedAsync(incident.Id);
+
             results = [result];
         }
         else
         {
             var incidents = await topDesk.GetOpenIncidentsAsync(10);
+
+            // Filter out already-triaged incidents
+            var unprocessedIncidents = new List<TopDeskIncident>();
+            foreach (var inc in incidents)
+            {
+                if (!await triagedState.IsProcessedAsync(inc.Id))
+                    unprocessedIncidents.Add(inc);
+            }
+
+            if (unprocessedIncidents.Count == 0)
+            {
+                var skipResponse = req.CreateResponse(System.Net.HttpStatusCode.OK);
+                skipResponse.Headers.Add("Content-Type", "application/json");
+                await skipResponse.WriteStringAsync(JsonSerializer.Serialize(
+                    new { message = "No new incidents to triage", skipped = true },
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                return skipResponse;
+            }
+
             // Apply branch assignments to any without category
-            foreach (var inc in incidents.Where(i => i.Category == null && i.CallerBranch?.Id != null))
+            foreach (var inc in unprocessedIncidents.Where(i => i.Category == null && i.CallerBranch?.Id != null))
             {
                 var assignment = await branchAssignments.GetAssignmentAsync(inc.CallerBranch.Id);
                 if (assignment != null)
@@ -104,10 +141,10 @@ public class TriageIncidentFunction(
                     logger.LogInformation("Assigned {Number} via branch", inc.Number);
                 }
             }
-            var triaged = await Task.WhenAll(incidents.Select(i => aiTriage.TriageIncidentAsync(i)));
+            var triaged = await Task.WhenAll(unprocessedIncidents.Select(i => aiTriage.TriageIncidentAsync(i)));
 
             // Auto-assign category based on description keywords
-            foreach (var (incident, result) in incidents.Zip(triaged))
+            foreach (var (incident, result) in unprocessedIncidents.Zip(triaged))
             {
                 var categoryMapping = categoryMapper.MapDescription(incident.BriefDescription);
                 if (categoryMapping != null && incident.Category == null)
@@ -131,6 +168,9 @@ public class TriageIncidentFunction(
                         "bdfc2c34-85e2-412a-9cf1-4869efebd7c4");  // 24/7 Team - Monitoring
                     logger.LogInformation("Assigned priority {Priority} for {Number}", result.RecommendedPriority, incident.Number);
                 }
+
+                // Mark as processed
+                await triagedState.MarkProcessedAsync(incident.Id);
             }
 
             if (postNotes)
